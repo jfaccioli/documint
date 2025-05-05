@@ -67,8 +67,12 @@ python main.py
 Go to: http://localhost:5000
 
 
+---
+
+
 ## 🧠 How Placeholders Work
 DocuMint supports two methods for embedding merge data into your .docx template:
+
 
 ### ✅ Option 1: Custom Placeholders (Default)
 Type placeholders manually in your Word document using «..._...». Replace spaces with underscores to match Excel column names.
@@ -79,6 +83,7 @@ Your plan starts on «Start_Date».
 
 Matching Excel headers:
 First Name | Last Name | Start Date
+
 
 ### ✅ Option 2: Microsoft Word “Insert Merge Field” (Advanced)
 For users familiar with Microsoft Word’s Mail Merge:
@@ -96,12 +101,19 @@ Save the template .docx file.
 DocuMint detects and replaces both typed placeholders and Word merge fields within paragraphs or tables.
 
 
+---
+
+
 ## 💼 Example Use Cases
 NDIS SIL and SDA contracts
 Letters of offer or employment
 Bulk tenancy agreements (e.g. Form 1AA)
 Certificates or registration confirmations
 School or healthcare document mail-outs
+
+
+---
+
 
 ## 🔐 Security Notes
 Uploaded and generated files are stored only temporarily.
