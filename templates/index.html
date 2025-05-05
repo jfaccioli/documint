@@ -1,0 +1,29 @@
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>DocuMint – Document Generator</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    </head>
+    <body>
+      <div class="container mt-5">
+        <h1 class="mb-4">📄 Welcome to <strong>DocuMint</strong></h1>
+        <p class="lead">Upload a Word template and Excel file to generate personalised documents.</p>
+
+        <form action="/upload" method="post" enctype="multipart/form-data" class="mb-3">
+          <div class="mb-3">
+            <label for="wordfile" class="form-label">📝 Word Template (.docx):</label>
+            <input type="file" class="form-control" id="wordfile" name="wordfile" accept=".docx" required />
+          </div>
+          <div class="mb-3">
+            <label for="excelfile" class="form-label">📊 Excel Data File (.xlsx):</label>
+            <input type="file" class="form-control" id="excelfile" name="excelfile" accept=".xlsx" required />
+          </div>
+          <button type="submit" class="btn btn-success">📤 Upload and Continue</button>
+        </form>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    </body>
+    </html>
