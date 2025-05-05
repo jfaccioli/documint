@@ -1,6 +1,6 @@
 # 📄 DocuMint – Bulk Word Document Generator from Excel Data
 
-**DocuMint** is a simple yet powerful Flask web app that automates the creation of personalized Word documents using a single template and an Excel spreadsheet.
+**DocuMint** is a web-based document generator that turns Excel spreadsheets into individually customised Word documents using a single template. Perfect for contracts, documents, tenancy forms, and any admin task requiring personalised files — in bulk.
 
 [🟢 Live Demo – Try DocuMint Now](https://documint.onrender.com/)
 
@@ -8,10 +8,15 @@
 
 ### 🔥 Why DocuMint?
 
-Microsoft Word's built-in **Mail Merge** lets you personalise letters and contracts — but it **only merges into a single `.docx` file with multiple pages**, one per recipient. This means **you still need to split the file manually** if you want individual documents.
+Microsoft Word's Mail Merge is useful — but limited. It only creates one long .docx file with multiple pages for different recipients. You still have to split the document manually.
 
-**DocuMint solves that.**  
-It automates the entire process — taking a Word template and an Excel spreadsheet, and generating a **separate document for each row**, ready to send, sign, or upload.
+DocuMint does it better:
+
+Creates separate Word files, one for each row of your Excel spreadsheet
+
+Automatically names each file
+
+Packages them all in a ZIP, ready to download
 
 ---
 
@@ -24,6 +29,32 @@ It automates the entire process — taking a Word template and an Excel spreadsh
 - 📂 Merge fields into both **paragraphs** and **tables**
 - 🗂️ Download a ZIP file with all generated documents
 - 🧹 Auto-cleans temporary files after download
+
+---
+
+## ▶️ How to Use
+
+### 1. Prepare Your Excel File
+Each row should represent one document. The column headers will become your placeholders.
+
+![Excel Screenshot](static/Excel.png)
+
+
+### 2. Prepare Your Word Template
+Use one of the two supported methods:
+
+✅ Option 1: Custom Placeholders
+Type placeholders like «First_Name» directly in Word
+Replace spaces with underscores to match Excel column names
+
+✅ Option 2: Insert Merge Field (Advanced)
+Open Word > Mailings > Select Recipients > Use Existing List…
+Load your Excel
+Use Insert Merge Field for placeholders (e.g. First_Name)
+Save the .docx file
+
+![Word Screenshot 1](static/Word1.png) 
+![Word Screenshot 2](static/Word2.png)
 
 ---
 
@@ -51,69 +82,14 @@ documint/
 
 ---
 
-## ▶️ How to Use
-
-### 1. Clone the repository
-git clone https://github.com/yourusername/documint.git
-cd documint
-
-### 2.Install dependencies
-pip install -r requirements.txt
-
-### 3. Run the app
-python main.py
-
-### 4. Open your browser
-Go to: http://localhost:5000
-
-
----
-
-
-## 🧠 How Placeholders Work
-DocuMint supports two methods for embedding merge data into your .docx template:
-
-
-### ✅ Option 1: Custom Placeholders (Default)
-Type placeholders manually in your Word document using «..._...». Replace spaces with underscores to match Excel column names.
-
-Example in Word:
-Dear «First_Name» «Last_Name»,
-Your plan starts on «Start_Date».
-
-Matching Excel headers:
-First Name | Last Name | Start Date
-
-
-### ✅ Option 2: Microsoft Word “Insert Merge Field” (Advanced)
-For users familiar with Microsoft Word’s Mail Merge:
-
-Open your template in Word.
-
-Go to Mailings > Select Recipients > Use an Existing List…
-
-Load your Excel file.
-
-Use Mailings > Insert Merge Field to place data placeholders.
-
-Save the template .docx file.
-
-DocuMint detects and replaces both typed placeholders and Word merge fields within paragraphs or tables.
-
-
----
-
-
 ## 💼 Example Use Cases
-NDIS SIL and SDA contracts
+Contracts
 Letters of offer or employment
-Bulk tenancy agreements (e.g. Form 1AA)
+Bulk tenancy agreements
 Certificates or registration confirmations
 School or healthcare document mail-outs
 
-
 ---
-
 
 ## 🔐 Security Notes
 Uploaded and generated files are stored only temporarily.
