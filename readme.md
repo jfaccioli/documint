@@ -54,23 +54,16 @@ documint/
 ## ▶️ How to Use
 
 ### 1. Clone the repository
-```bash
 git clone https://github.com/yourusername/documint.git
 cd documint
 
-2. Install dependencies
-bash
-Copy
-Edit
+### 2.Install dependencies
 pip install -r requirements.txt
 
-3. Run the app
-bash
-Copy
-Edit
+### 3. Run the app
 python main.py
 
-4. Open your browser
+### 4. Open your browser
 Go to: http://localhost:5000
 
 
