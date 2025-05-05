@@ -1,8 +1,18 @@
-# DocuMint
+# 📄 DocuMint – Bulk Word Document Generator from Excel Data
 
-**DocuMint** is a lightweight web app that automates the generation of Word documents using a template and an Excel spreadsheet. It’s ideal for contracts, letters, and repetitive admin tasks such as generating SIL or SDA agreements, NDIS documents, tenancy forms, and more.
+**DocuMint** is a simple yet powerful Flask web app that automates the creation of personalized Word documents using a single template and an Excel spreadsheet.
 
 ---
+
+### 🔥 Why DocuMint?
+
+Microsoft Word's built-in **Mail Merge** lets you personalise letters and contracts — but it **only merges into a single `.docx` file with multiple pages**, one per recipient. This means **you still need to split the file manually** if you want individual documents.
+
+**DocuMint solves that.**  
+It automates the entire process — taking a Word template and an Excel spreadsheet, and generating a **separate document for each row**, ready to send, sign, or upload.
+
+---
+
 
 ## 🚀 Features
 
