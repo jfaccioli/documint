@@ -107,27 +107,32 @@ def process_files():
         placeholders_found = set()
         for paragraph in doc.paragraphs:
             for run in paragraph.runs:
-                matches = re.findall(r"«[^»]+»", run.text)
+                matches = re.findall(r"[«<][^»>]+[»>]", run.text)
                 placeholders_found.update(matches)
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         for run in paragraph.runs:
-                            matches = re.findall(r"«[^»]+»", run.text)
+                            matches = re.findall(r"[«<][^»>]+[»>]", run.text)
                             placeholders_found.update(matches)
         logging.info(f"Placeholders found in document: {placeholders_found}")
 
         # Replace placeholders in paragraphs
+        table_replacements = 0
         for paragraph in doc.paragraphs:
-            _replace_placeholders_in_paragraph(paragraph, row_dict)
+            replacements = _replace_placeholders_in_paragraph(paragraph, row_dict)
+            table_replacements += replacements
 
         # Replace placeholders in tables
         for table in doc.tables:
-            _replace_placeholders_in_table(table, row_dict)
+            table_replacements += _replace_placeholders_in_table(table, row_dict)
+
+        logging.info(f"Total replacements made: {table_replacements}")
+        if table_replacements == 0:
+            logging.warning("No placeholders were replaced in the document")
 
         try:
-            # Use row_dict for consistent column access
             output_filename = f"{secure_filename(str(row_dict[chosen_column]))}_{index}.docx"
             output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
             doc.save(output_path)
@@ -174,8 +179,8 @@ def process_files():
     return send_from_directory(app.config['OUTPUT_FOLDER'], "processed_documents.zip", as_attachment=True)
 
 def _replace_placeholders_in_paragraph(paragraph, row_data):
-    full_text = ''.join(run.text for run in paragraph.runs)
-    replaced = False
+    full_text = ''.join(run.text for run in paragraph.runs if run.text)
+    replacements = 0
 
     for placeholder, value in row_data.items():
         if isinstance(value, datetime.datetime) and pd.notna(value):
@@ -183,25 +188,31 @@ def _replace_placeholders_in_paragraph(paragraph, row_data):
         elif pd.isna(value):
             value = ""
         formatted_placeholder = placeholder.replace(' ', '_')
-        pattern = re.compile(r"«" + re.escape(formatted_placeholder) + r"»", re.IGNORECASE)
+        # Handle both «...» and <<...>> formats
+        pattern = re.compile(r"[«<]\s*" + re.escape(formatted_placeholder) + r"\s*[»>]", re.IGNORECASE)
         if pattern.search(full_text):
             full_text = pattern.sub(str(value), full_text)
-            replaced = True
+            replacements += 1
 
-    if replaced:
+    if replacements > 0:
+        # Preserve paragraph structure
         for run in paragraph.runs:
             run.text = ''
         paragraph.add_run(full_text)
 
+    return replacements
+
 def _replace_placeholders_in_table(table, row_data):
+    replacements = 0
     for row in table.rows:
         for cell in row.cells:
             for paragraph in cell.paragraphs:
-                cell_text = ''.join(run.text for run in paragraph.runs)
+                cell_text = ''.join(run.text for run in paragraph.runs if run.text)
                 logging.info(f"Table cell text: {cell_text}")
-                _replace_placeholders_in_paragraph(paragraph, row_data)
+                replacements += _replace_placeholders_in_paragraph(paragraph, row_data)
             for nested_table in cell.tables:
-                _replace_placeholders_in_table(nested_table, row_data)
+                replacements += _replace_placeholders_in_table(nested_table, row_data)
+    return replacements
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
