@@ -10,13 +10,14 @@ import datetime
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'output'
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB limit
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10 MB upload limit
+
+# Create folders if they don't exist
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
 ALLOWED_WORD_EXTENSIONS = {'.docx'}
 ALLOWED_EXCEL_EXTENSIONS = {'.xlsx', '.xls'}
-
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
 def allowed_file(filename, allowed_extensions):
     return '.' in filename and os.path.splitext(filename)[1].lower() in allowed_extensions
@@ -50,7 +51,6 @@ def upload_files():
     except Exception:
         abort(400, 'Failed to read the Excel file. Ensure it is a valid format.')
 
-    data.columns = [col.replace(" ", "_") for col in data.columns]  # Normalise headers
     columns = data.columns.tolist()
     return render_template('choose_column.html', columns=columns, word_filepath=word_filepath, excel_filepath=excel_filepath)
 
@@ -65,15 +65,21 @@ def process_files():
     except Exception:
         abort(400, 'Error reading the Excel file during processing.')
 
-    data.columns = [col.replace(" ", "_") for col in data.columns]
     filenames = []
 
     for index, row in data.iterrows():
         doc = Document(word_filepath)
-        _replace_placeholders(doc, row.to_dict())
+        row_dict = row.to_dict()
 
-        safe_filename = secure_filename(str(row[chosen_column])) or f"document_{index}"
-        output_filename = f"{safe_filename}_{index}.docx"
+        # Replace placeholders in paragraphs
+        for paragraph in doc.paragraphs:
+            _replace_placeholders_in_paragraph(paragraph, row_dict)
+
+        # Replace placeholders in tables
+        for table in doc.tables:
+            _replace_placeholders_in_table(table, row_dict)
+
+        output_filename = f"{secure_filename(str(row[chosen_column]))}_{index}.docx"
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         doc.save(output_path)
         filenames.append(output_path)
@@ -98,27 +104,22 @@ def process_files():
 
     return send_from_directory(app.config['OUTPUT_FOLDER'], "processed_documents.zip", as_attachment=True)
 
-def _replace_placeholders(doc, row_data):
-    for paragraph in doc.paragraphs:
-        _replace_placeholders_in_runs(paragraph.runs, row_data)
-
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    _replace_placeholders_in_runs(paragraph.runs, row_data)
-
-def _replace_placeholders_in_runs(runs, row_data):
-    for run in runs:
+def _replace_placeholders_in_paragraph(paragraph, row_data):
+    for run in paragraph.runs:
         for placeholder, value in row_data.items():
             if isinstance(value, datetime.datetime) and pd.notna(value):
                 value = value.strftime('%d/%m/%Y')
             elif pd.isna(value):
                 value = ""
-            formatted_placeholder = placeholder.replace(" ", "_")
-            tag = f"«{formatted_placeholder}»"
-            if tag in run.text:
-                run.text = run.text.replace(tag, str(value))
+            formatted_placeholder = placeholder.replace(' ', '_')
+            pattern = re.compile(r"«" + re.escape(formatted_placeholder) + r"»")
+            run.text = pattern.sub(str(value), run.text)
+
+def _replace_placeholders_in_table(table, row_data):
+    for row in table.rows:
+        for cell in row.cells:
+            for paragraph in cell.paragraphs:
+                _replace_placeholders_in_paragraph(paragraph, row_data)
 
 if __name__ == '__main__':
     app.run(debug=True)
