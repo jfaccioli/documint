@@ -65,11 +65,29 @@ def process_files():
     except Exception:
         abort(400, 'Error reading the Excel file during processing.')
 
+    # Log Excel columns for debugging
+    print(f"Excel columns: {data.columns.tolist()}")
+
     filenames = []
 
     for index, row in data.iterrows():
         doc = Document(word_filepath)
         row_dict = row.to_dict()
+
+        # Log placeholders found in document for debugging
+        placeholders_found = set()
+        for paragraph in doc.paragraphs:
+            for run in paragraph.runs:
+                matches = re.findall(r"«[^»]+»", run.text)
+                placeholders_found.update(matches)
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            matches = re.findall(r"«[^»]+»", run.text)
+                            placeholders_found.update(matches)
+        print(f"Placeholders found in document: {placeholders_found}")
 
         # Replace placeholders in paragraphs
         for paragraph in doc.paragraphs:
@@ -105,21 +123,40 @@ def process_files():
     return send_from_directory(app.config['OUTPUT_FOLDER'], "processed_documents.zip", as_attachment=True)
 
 def _replace_placeholders_in_paragraph(paragraph, row_data):
-    for run in paragraph.runs:
-        for placeholder, value in row_data.items():
-            if isinstance(value, datetime.datetime) and pd.notna(value):
-                value = value.strftime('%d/%m/%Y')
-            elif pd.isna(value):
-                value = ""
-            formatted_placeholder = placeholder.replace(' ', '_')
-            pattern = re.compile(r"«" + re.escape(formatted_placeholder) + r"»")
-            run.text = pattern.sub(str(value), run.text)
+    # Combine all runs' text into a single string
+    full_text = ''.join(run.text for run in paragraph.runs)
+    replaced = False
+
+    # Perform replacements on the full text
+    for placeholder, value in row_data.items():
+        if isinstance(value, datetime.datetime) and pd.notna(value):
+            value = value.strftime('%d/%m/%Y')
+        elif pd.isna(value):
+            value = ""
+        formatted_placeholder = placeholder.replace(' ', '_')
+        pattern = re.compile(r"«" + re.escape(formatted_placeholder) + r"»", re.IGNORECASE)
+        if pattern.search(full_text):
+            full_text = pattern.sub(str(value), full_text)
+            replaced = True
+
+    # If replacements were made, update the paragraph
+    if replaced:
+        # Preserve original formatting by clearing runs and adding new run
+        for run in paragraph.runs:
+            run.text = ''
+        paragraph.add_run(full_text)
 
 def _replace_placeholders_in_table(table, row_data):
     for row in table.rows:
         for cell in row.cells:
             for paragraph in cell.paragraphs:
+                # Log table cell text for debugging
+                cell_text = ''.join(run.text for run in paragraph.runs)
+                print(f"Table cell text: {cell_text}")
                 _replace_placeholders_in_paragraph(paragraph, row_data)
+            # Handle nested tables
+            for nested_table in cell.tables:
+                _replace_placeholders_in_table(nested_table, row_data)
 
 if __name__ == '__main__':
     app.run(debug=True)
