@@ -112,16 +112,18 @@ def process_files():
                     logging.debug(f"Table cell [row {row_idx}, col {col_idx}] text: {cell_text!r}")
                     for paragraph in cell.paragraphs:
                         full_text = ''.join(run.text for run in paragraph.runs)
-                        # Normalize whitespace
-                        normalized_text = re.sub(r'\s+', ' ', full_text).strip()
+                        # Enhanced normalization for Unicode whitespace and non-printable characters
+                        normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad]+', ' ', full_text).strip()
+                        run_texts = [repr(run.text) for run in paragraph.runs]
+                        logging.debug(f"Table cell [row {row_idx}, col {col_idx}] runs: {run_texts}")
                         matches = re.findall(r"[«<][^»>]+[»>]", normalized_text)
                         placeholders_found.update(matches)
                         logging.debug(f"Table cell [row {row_idx}, col {col_idx}] full text: {full_text!r}, normalized: {normalized_text!r}, matches: {matches}")
 
         for para_idx, paragraph in enumerate(doc.paragraphs):
             full_text = ''.join(run.text for run in paragraph.runs)
-            # Normalize whitespace
-            normalized_text = re.sub(r'\s+', ' ', full_text).strip()
+            # Enhanced normalization for Unicode whitespace and non-printable characters
+            normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad]+', ' ', full_text).strip()
             run_texts = [repr(run.text) for run in paragraph.runs]
             logging.debug(f"Paragraph {para_idx} runs: {run_texts}")
             matches = re.findall(r"[«<][^»>]+[»>]", normalized_text)
@@ -191,8 +193,8 @@ def process_files():
 
 def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
     full_text = ''.join(run.text for run in paragraph.runs)
-    # Normalize whitespace (tabs, non-breaking spaces, etc.) to a single space
-    normalized_text = re.sub(r'\s+', ' ', full_text).strip()
+    # Enhanced normalization for Unicode whitespace and non-printable characters
+    normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad]+', ' ', full_text).strip()
     replacements = 0
     logging.debug(f"Processing paragraph {para_idx} text: {full_text!r}, normalized: {normalized_text!r}")
 
@@ -203,8 +205,9 @@ def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
             value = ""
         # Strip any whitespace from the replacement value
         replacement = str(value).strip()
-        formatted_placeholder = re.escape(placeholder.replace(' ', '_'))
+        formatted_placeholder = re.escape(placeholder)
         pattern = re.compile(r"[«<]\s*" + formatted_placeholder + r"\s*[»>]", re.IGNORECASE)
+        logging.debug(f"Checking pattern '{pattern.pattern}' against normalized text: {normalized_text!r}")
         if pattern.search(normalized_text):
             normalized_text = pattern.sub(replacement, normalized_text)
             replacements += 1
