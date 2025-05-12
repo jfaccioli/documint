@@ -90,7 +90,7 @@ def process_files():
 
     if chosen_column not in data.columns:
         logging.error(f"Chosen column '{chosen_column}' not found in Excel file")
-        abort(400, f"Column '{chosen_column}' not found in Excel file.')
+        abort(400, f"Column '{chosen_column}' not found in Excel file.")
 
     filenames = []
 
