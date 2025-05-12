@@ -10,7 +10,7 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
         logging.StreamHandler()
@@ -107,29 +107,29 @@ def process_files():
         placeholders_found = set()
         for paragraph in doc.paragraphs:
             for run in paragraph.runs:
-                matches = re.findall(r"[«<][^»>]+[»>]", run.text)
+                matches = re.findall(r"[«<]\s*[^»>]+?\s*[»>]|{[^{}]+}", run.text)
                 placeholders_found.update(matches)
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         for run in paragraph.runs:
-                            matches = re.findall(r"[«<][^»>]+[»>]", run.text)
+                            matches = re.findall(r"[«<]\s*[^»>]+?\s*[»>]|{[^{}]+}", run.text)
                             placeholders_found.update(matches)
         logging.info(f"Placeholders found in document: {placeholders_found}")
 
-        # Replace placeholders in paragraphs
-        table_replacements = 0
+        # Replace placeholders in paragraphs and tables
+        total_replacements = 0
         for paragraph in doc.paragraphs:
             replacements = _replace_placeholders_in_paragraph(paragraph, row_dict)
-            table_replacements += replacements
+            total_replacements += replacements
 
-        # Replace placeholders in tables
         for table in doc.tables:
-            table_replacements += _replace_placeholders_in_table(table, row_dict)
+            replacements = _replace_placeholders_in_table(table, row_dict)
+            total_replacements += replacements
 
-        logging.info(f"Total replacements made: {table_replacements}")
-        if table_replacements == 0:
+        logging.info(f"Total replacements made: {total_replacements}")
+        if total_replacements == 0:
             logging.warning("No placeholders were replaced in the document")
 
         try:
@@ -179,26 +179,34 @@ def process_files():
     return send_from_directory(app.config['OUTPUT_FOLDER'], "processed_documents.zip", as_attachment=True)
 
 def _replace_placeholders_in_paragraph(paragraph, row_data):
-    full_text = ''.join(run.text for run in paragraph.runs if run.text)
+    full_text = ''.join(run.text for run in paragraph.runs if run.text.strip())
     replacements = 0
+    logging.debug(f"Processing paragraph text: {full_text}")
 
     for placeholder, value in row_data.items():
         if isinstance(value, datetime.datetime) and pd.notna(value):
             value = value.strftime('%d/%m/%Y')
         elif pd.isna(value):
             value = ""
+        # Normalize placeholder from Excel column
         formatted_placeholder = placeholder.replace(' ', '_')
-        # Handle both «...» and <<...>> formats
-        pattern = re.compile(r"[«<]\s*" + re.escape(formatted_placeholder) + r"\s*[»>]", re.IGNORECASE)
-        if pattern.search(full_text):
-            full_text = pattern.sub(str(value), full_text)
-            replacements += 1
+        # Try multiple placeholder formats: «...», <<...>>, {...}
+        patterns = [
+            re.compile(r"[«<]\s*" + re.escape(formatted_placeholder) + r"\s*[»>]", re.IGNORECASE),
+            re.compile(r"\{\s*" + re.escape(formatted_placeholder) + r"\s*\}", re.IGNORECASE)
+        ]
+
+        for pattern in patterns:
+            if pattern.search(full_text):
+                full_text = pattern.sub(str(value), full_text)
+                replacements += 1
+                logging.debug(f"Replaced '{pattern.pattern}' with '{value}'")
 
     if replacements > 0:
-        # Preserve paragraph structure
         for run in paragraph.runs:
             run.text = ''
         paragraph.add_run(full_text)
+        logging.debug(f"Updated paragraph text: {full_text}")
 
     return replacements
 
@@ -207,8 +215,8 @@ def _replace_placeholders_in_table(table, row_data):
     for row in table.rows:
         for cell in row.cells:
             for paragraph in cell.paragraphs:
-                cell_text = ''.join(run.text for run in paragraph.runs if run.text)
-                logging.info(f"Table cell text: {cell_text}")
+                cell_text = ''.join(run.text for run in paragraph.runs if run.text.strip())
+                logging.debug(f"Table cell text: {cell_text}")
                 replacements += _replace_placeholders_in_paragraph(paragraph, row_data)
             for nested_table in cell.tables:
                 replacements += _replace_placeholders_in_table(nested_table, row_data)
