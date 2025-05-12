@@ -126,7 +126,7 @@ def process_files():
                         full_text = ''.join(run.text for run in paragraph.runs)
                         normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d\u2028\u200e\u200f]+', ' ', full_text).strip()
                         run_texts = [repr(run.text) for run in paragraph.runs]
-                        unicode_chars = [(char, hex(ord(char))) for char in normalized_text if ord(char) > 127 or ord(char) < 32]
+                        unicode_chars = [(char, hex(ord(char))) for char in full_text if ord(char) > 127 or ord(char) < 32]
                         matches = re.findall(r"[\u00ab\u2039<](.*?[\u00bb\u203a>])", normalized_text)
                         placeholders_found.update(matches)
                         logging.debug(f"Table cell [row {row_idx}, col {col_idx}] runs: {run_texts}")
@@ -137,7 +137,7 @@ def process_files():
             full_text = ''.join(run.text for run in paragraph.runs)
             normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d\u2028\u200e\u200f]+', ' ', full_text).strip()
             run_texts = [repr(run.text) for run in paragraph.runs]
-            unicode_chars = [(char, hex(ord(char))) for char in normalized_text if ord(char) > 127 or ord(char) < 32]
+            unicode_chars = [(char, hex(ord(char))) for char in full_text if ord(char) > 127 or ord(char) < 32]
             matches = re.findall(r"[\u00ab\u2039<](.*?[\u00bb\u203a>])", normalized_text)
             placeholders_found.update(matches)
             logging.debug(f"Paragraph {para_idx} runs: {run_texts}")
@@ -246,7 +246,6 @@ def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
                 if (clean_placeholder.lower() == column_name.lower() or
                     clean_placeholder.lower().replace("_", "") == column_name.lower().replace("_", "") or
                     clean_placeholder.lower().replace(" ", "") == column_name.lower().replace(" ", "")):
-                    
                     pattern = f"[\u00ab\u2039<]\\s*{re.escape(clean_placeholder)}\\s*[\u00bb\u203a>]"
                     regex = re.compile(pattern, re.IGNORECASE)
                     if regex.search(normalized_text):
@@ -263,26 +262,21 @@ def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
         logging.debug(f"Updated paragraph {para_idx} text: {normalized_text!r}")
     
     # Third approach: Direct run-by-run inspection and replacement
-    # This is needed because some placeholders might be split across runs
+    # Improved to detect any placeholder and match to column names
     if replacements == 0:
-        # Check each run for placeholders
         for i, run in enumerate(paragraph.runs):
-            for column_name, value in row_data.items():
-                # Different variations of placeholder formats to check
-                placeholders = [
-                    f"«{column_name}»", 
-                    f"«{column_name.lower()}»",
-                    f"«{column_name.upper()}»",
-                    f"\u00ab{column_name}\u00bb",
-                    f"\u00ab{column_name.lower()}\u00bb",
-                    f"\u00ab{column_name.upper()}\u00bb"
-                ]
-                
-                for placeholder in placeholders:
-                    if placeholder in run.text:
-                        run.text = run.text.replace(placeholder, value)
+            run_text = run.text
+            placeholder_match = re.search(r"[\u00ab\u2039<](.*?[\u00bb\u203a>])", run_text)
+            if placeholder_match:
+                placeholder = placeholder_match.group(1)[:-1].strip()
+                for column_name, value in row_data.items():
+                    if (placeholder.lower() == column_name.lower() or
+                        placeholder.lower().replace("_", "") == column_name.lower().replace("_", "") or
+                        placeholder.lower().replace(" ", "") == column_name.lower().replace(" ", "")):
+                        original_placeholder = placeholder_match.group(0)
+                        run.text = run_text.replace(original_placeholder, value)
                         replacements += 1
-                        logging.debug(f"Direct run replacement: '{placeholder}' with '{value}' in run {i} of paragraph {para_idx}")
+                        logging.debug(f"Direct run replacement: '{original_placeholder}' with '{value}' in run {i} of paragraph {para_idx}")
     
     return replacements
 
