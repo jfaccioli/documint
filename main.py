@@ -102,11 +102,9 @@ def process_files():
             continue
 
         # Create a dictionary mapping from column names to values
-        # This ensures we're using exact column names as they appear in Excel
         row_dict = {}
         for col in data.columns:
             value = row[col]
-            # Format datetime objects
             if isinstance(value, datetime.datetime) and pd.notna(value):
                 value = value.strftime('%d/%m/%Y')
             elif pd.isna(value):
@@ -126,20 +124,25 @@ def process_files():
                 for col_idx, cell in enumerate(row.cells):
                     for paragraph in cell.paragraphs:
                         full_text = ''.join(run.text for run in paragraph.runs)
-                        # Enhanced normalization for Unicode whitespace and non-printable characters
-                        normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d]+', ' ', full_text).strip()
-                        matches = re.findall(r"[«<]([^»>]*)[»>]", normalized_text)
+                        normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d\u2028\u200e\u200f]+', ' ', full_text).strip()
+                        run_texts = [repr(run.text) for run in paragraph.runs]
+                        unicode_chars = [(char, hex(ord(char))) for char in normalized_text if ord(char) > 127 or ord(char) < 32]
+                        matches = re.findall(r"[\u00ab\u2039<](.*?[\u00bb\u203a>])", normalized_text)
                         placeholders_found.update(matches)
+                        logging.debug(f"Table cell [row {row_idx}, col {col_idx}] runs: {run_texts}")
+                        logging.debug(f"Table cell [row {row_idx}, col {col_idx}] unicode chars: {unicode_chars}")
                         logging.debug(f"Table cell [row {row_idx}, col {col_idx}] full text: {full_text!r}, normalized: {normalized_text!r}, matches: {matches}")
 
         for para_idx, paragraph in enumerate(doc.paragraphs):
             full_text = ''.join(run.text for run in paragraph.runs)
-            # Enhanced normalization for Unicode whitespace and non-printable characters
-            normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d]+', ' ', full_text).strip()
-            matches = re.findall(r"[«<]([^»>]*)[»>]", normalized_text)
+            normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d\u2028\u200e\u200f]+', ' ', full_text).strip()
+            run_texts = [repr(run.text) for run in paragraph.runs]
+            unicode_chars = [(char, hex(ord(char))) for char in normalized_text if ord(char) > 127 or ord(char) < 32]
+            matches = re.findall(r"[\u00ab\u2039<](.*?[\u00bb\u203a>])", normalized_text)
             placeholders_found.update(matches)
+            logging.debug(f"Paragraph {para_idx} runs: {run_texts}")
+            logging.debug(f"Paragraph {para_idx} unicode chars: {unicode_chars}")
             logging.debug(f"Paragraph {para_idx} full text: {full_text!r}, normalized: {normalized_text!r}, matches: {matches}")
-        
         logging.info(f"Placeholders found in document: {placeholders_found}")
 
         # Replace placeholders in paragraphs and tables
@@ -203,20 +206,26 @@ def process_files():
     return send_from_directory(app.config['OUTPUT_FOLDER'], "processed_documents.zip", as_attachment=True)
 
 def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
+    # Concatenate all runs to get the full paragraph text
     full_text = ''.join(run.text for run in paragraph.runs)
     # Enhanced normalization for Unicode whitespace and non-printable characters
-    normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d]+', ' ', full_text).strip()
+    normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d\u2028\u200e\u200f]+', ' ', full_text).strip()
     original_text = normalized_text
+    
+    # Check if there's any text to process
+    if not normalized_text:
+        return 0
+    
     replacements = 0
     logging.debug(f"Processing paragraph {para_idx} text: {full_text!r}, normalized: {normalized_text!r}")
-
+    
     # First approach: Direct placeholder replacement (exact column names)
     for column_name, value in row_data.items():
         # Create pattern for various placeholder formats with the column name
         patterns = [
-            f"[«<]\\s*{re.escape(column_name)}\\s*[»>]",           # Basic: «Column_Name»
-            f"[«<]\\s*{re.escape(column_name.lower())}\\s*[»>]",   # Lowercase: «column_name»
-            f"[«<]\\s*{re.escape(column_name.upper())}\\s*[»>]"    # Uppercase: «COLUMN_NAME»
+            f"[\u00ab\u2039<]\\s*{re.escape(column_name)}\\s*[\u00bb\u203a>]",           # Basic: «Column_Name»
+            f"[\u00ab\u2039<]\\s*{re.escape(column_name.lower())}\\s*[\u00bb\u203a>]",   # Lowercase: «column_name»
+            f"[\u00ab\u2039<]\\s*{re.escape(column_name.upper())}\\s*[\u00bb\u203a>]"    # Uppercase: «COLUMN_NAME»
         ]
         
         for pattern in patterns:
@@ -228,28 +237,53 @@ def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
     
     # Second approach: Extract placeholders and try to match them to column names
     if replacements == 0:
-        placeholders = re.findall(r"[«<]([^»>]*)[»>]", original_text)
+        placeholders = re.findall(r"[\u00ab\u2039<](.*?[\u00bb\u203a>])", original_text)
         for placeholder in placeholders:
-            clean_placeholder = placeholder.strip()
+            # Remove the closing bracket from the placeholder
+            clean_placeholder = placeholder[:-1].strip()
             # Try different variations of the placeholder to match column names
             for column_name, value in row_data.items():
                 if (clean_placeholder.lower() == column_name.lower() or
                     clean_placeholder.lower().replace("_", "") == column_name.lower().replace("_", "") or
                     clean_placeholder.lower().replace(" ", "") == column_name.lower().replace(" ", "")):
                     
-                    pattern = f"[«<]\\s*{re.escape(clean_placeholder)}\\s*[»>]"
+                    pattern = f"[\u00ab\u2039<]\\s*{re.escape(clean_placeholder)}\\s*[\u00bb\u203a>]"
                     regex = re.compile(pattern, re.IGNORECASE)
                     if regex.search(normalized_text):
                         normalized_text = regex.sub(value, normalized_text)
                         replacements += 1
                         logging.debug(f"Fuzzy match: Replaced '{pattern}' with '{value}' in paragraph {para_idx}")
-
+    
+    # If we made replacements using regex approaches, update the paragraph
     if replacements > 0:
+        # Clear all runs and add a single new run with the replaced text
         for run in paragraph.runs:
             run.text = ''
         paragraph.add_run(normalized_text)
         logging.debug(f"Updated paragraph {para_idx} text: {normalized_text!r}")
-
+    
+    # Third approach: Direct run-by-run inspection and replacement
+    # This is needed because some placeholders might be split across runs
+    if replacements == 0:
+        # Check each run for placeholders
+        for i, run in enumerate(paragraph.runs):
+            for column_name, value in row_data.items():
+                # Different variations of placeholder formats to check
+                placeholders = [
+                    f"«{column_name}»", 
+                    f"«{column_name.lower()}»",
+                    f"«{column_name.upper()}»",
+                    f"\u00ab{column_name}\u00bb",
+                    f"\u00ab{column_name.lower()}\u00bb",
+                    f"\u00ab{column_name.upper()}\u00bb"
+                ]
+                
+                for placeholder in placeholders:
+                    if placeholder in run.text:
+                        run.text = run.text.replace(placeholder, value)
+                        replacements += 1
+                        logging.debug(f"Direct run replacement: '{placeholder}' with '{value}' in run {i} of paragraph {para_idx}")
+    
     return replacements
 
 def _replace_placeholders_in_table(table, row_data, table_idx):
