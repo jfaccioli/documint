@@ -112,7 +112,7 @@ def process_files():
                     logging.debug(f"Table cell [row {row_idx}, col {col_idx}] text: {cell_text!r}")
                     for paragraph in cell.paragraphs:
                         full_text = ''.join(run.text for run in paragraph.runs)
-                        matches = re.findall(r"(?<=^|\s)[«<][^»>]+[»>](?=\s|$)", full_text)
+                        matches = re.findall(r"[«<][^»>]+[»>]", full_text)
                         placeholders_found.update(matches)
                         logging.debug(f"Table cell [row {row_idx}, col {col_idx}] full text: {full_text!r}, matches: {matches}")
 
@@ -120,7 +120,7 @@ def process_files():
             full_text = ''.join(run.text for run in paragraph.runs)
             run_texts = [repr(run.text) for run in paragraph.runs]
             logging.debug(f"Paragraph {para_idx} runs: {run_texts}")
-            matches = re.findall(r"(?<=^|\s)[«<][^»>]+[»>](?=\s|$)", full_text)
+            matches = re.findall(r"[«<][^»>]+[»>]", full_text)
             placeholders_found.update(matches)
             logging.debug(f"Paragraph {para_idx} full text: {full_text!r}, matches: {matches}")
         logging.info(f"Placeholders found in document: {placeholders_found}")
@@ -196,7 +196,7 @@ def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
         elif pd.isna(value):
             value = ""
         formatted_placeholder = re.escape(placeholder.replace(' ', '_'))
-        pattern = re.compile(r"(?<=^|\s)[«<]" + formatted_placeholder + r"[»>](?=\s|$)", re.IGNORECASE)
+        pattern = re.compile(r"[«<]" + formatted_placeholder + r"[»>]", re.IGNORECASE)
         if pattern.search(full_text):
             full_text = pattern.sub(str(value), full_text)
             replacements += 1
