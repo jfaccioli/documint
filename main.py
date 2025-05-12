@@ -112,17 +112,21 @@ def process_files():
                     logging.debug(f"Table cell [row {row_idx}, col {col_idx}] text: {cell_text!r}")
                     for paragraph in cell.paragraphs:
                         full_text = ''.join(run.text for run in paragraph.runs)
-                        matches = re.findall(r"[«<][^»>]+[»>]", full_text)
+                        # Normalize whitespace
+                        normalized_text = re.sub(r'\s+', ' ', full_text).strip()
+                        matches = re.findall(r"[«<][^»>]+[»>]", normalized_text)
                         placeholders_found.update(matches)
-                        logging.debug(f"Table cell [row {row_idx}, col {col_idx}] full text: {full_text!r}, matches: {matches}")
+                        logging.debug(f"Table cell [row {row_idx}, col {col_idx}] full text: {full_text!r}, normalized: {normalized_text!r}, matches: {matches}")
 
         for para_idx, paragraph in enumerate(doc.paragraphs):
             full_text = ''.join(run.text for run in paragraph.runs)
+            # Normalize whitespace
+            normalized_text = re.sub(r'\s+', ' ', full_text).strip()
             run_texts = [repr(run.text) for run in paragraph.runs]
             logging.debug(f"Paragraph {para_idx} runs: {run_texts}")
-            matches = re.findall(r"[«<][^»>]+[»>]", full_text)
+            matches = re.findall(r"[«<][^»>]+[»>]", normalized_text)
             placeholders_found.update(matches)
-            logging.debug(f"Paragraph {para_idx} full text: {full_text!r}, matches: {matches}")
+            logging.debug(f"Paragraph {para_idx} full text: {full_text!r}, normalized: {normalized_text!r}, matches: {matches}")
         logging.info(f"Placeholders found in document: {placeholders_found}")
 
         # Replace placeholders in paragraphs and tables
@@ -187,26 +191,30 @@ def process_files():
 
 def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
     full_text = ''.join(run.text for run in paragraph.runs)
+    # Normalize whitespace (tabs, non-breaking spaces, etc.) to a single space
+    normalized_text = re.sub(r'\s+', ' ', full_text).strip()
     replacements = 0
-    logging.debug(f"Processing paragraph {para_idx} text: {full_text!r}")
+    logging.debug(f"Processing paragraph {para_idx} text: {full_text!r}, normalized: {normalized_text!r}")
 
     for placeholder, value in row_data.items():
         if isinstance(value, datetime.datetime) and pd.notna(value):
             value = value.strftime('%d/%m/%Y')
         elif pd.isna(value):
             value = ""
+        # Strip any whitespace from the replacement value
+        replacement = str(value).strip()
         formatted_placeholder = re.escape(placeholder.replace(' ', '_'))
-        pattern = re.compile(r"[«<]" + formatted_placeholder + r"[»>]", re.IGNORECASE)
-        if pattern.search(full_text):
-            full_text = pattern.sub(str(value), full_text)
+        pattern = re.compile(r"[«<]\s*" + formatted_placeholder + r"\s*[»>]", re.IGNORECASE)
+        if pattern.search(normalized_text):
+            normalized_text = pattern.sub(replacement, normalized_text)
             replacements += 1
-            logging.debug(f"Replaced '{pattern.pattern}' with '{value}' in paragraph {para_idx}")
+            logging.debug(f"Replaced '{pattern.pattern}' with '{replacement}' in paragraph {para_idx}")
 
     if replacements > 0:
         for run in paragraph.runs:
             run.text = ''
-        paragraph.add_run(full_text)
-        logging.debug(f"Updated paragraph {para_idx} text: {full_text!r}")
+        paragraph.add_run(normalized_text)
+        logging.debug(f"Updated paragraph {para_idx} text: {normalized_text!r}")
 
     return replacements
 
