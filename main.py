@@ -101,22 +101,34 @@ def process_files():
             logging.error(f"Error loading Word document: {str(e)}")
             continue
 
-        row_dict = row.to_dict()
+        # Create a dictionary mapping from column names to values
+        # This ensures we're using exact column names as they appear in Excel
+        row_dict = {}
+        for col in data.columns:
+            value = row[col]
+            # Format datetime objects
+            if isinstance(value, datetime.datetime) and pd.notna(value):
+                value = value.strftime('%d/%m/%Y')
+            elif pd.isna(value):
+                value = ""
+            else:
+                value = str(value).strip()
+            row_dict[col] = value
+
+        # Log all possible placeholders with column names for debugging
+        logging.info(f"Row data keys: {list(row_dict.keys())}")
+        logging.info(f"Row data: {row_dict}")
 
         # Log all tables and placeholders
         placeholders_found = set()
         for table in doc.tables:
             for row_idx, row in enumerate(table.rows):
                 for col_idx, cell in enumerate(row.cells):
-                    cell_text = ''.join(run.text for run in cell.paragraphs[0].runs).strip()
-                    logging.debug(f"Table cell [row {row_idx}, col {col_idx}] text: {cell_text!r}")
                     for paragraph in cell.paragraphs:
                         full_text = ''.join(run.text for run in paragraph.runs)
                         # Enhanced normalization for Unicode whitespace and non-printable characters
                         normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d]+', ' ', full_text).strip()
-                        run_texts = [repr(run.text) for run in paragraph.runs]
-                        logging.debug(f"Table cell [row {row_idx}, col {col_idx}] runs: {run_texts}")
-                        matches = re.findall(r"[«<].*?[»>]", normalized_text)
+                        matches = re.findall(r"[«<]([^»>]*)[»>]", normalized_text)
                         placeholders_found.update(matches)
                         logging.debug(f"Table cell [row {row_idx}, col {col_idx}] full text: {full_text!r}, normalized: {normalized_text!r}, matches: {matches}")
 
@@ -124,11 +136,10 @@ def process_files():
             full_text = ''.join(run.text for run in paragraph.runs)
             # Enhanced normalization for Unicode whitespace and non-printable characters
             normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d]+', ' ', full_text).strip()
-            run_texts = [repr(run.text) for run in paragraph.runs]
-            logging.debug(f"Paragraph {para_idx} runs: {run_texts}")
-            matches = re.findall(r"[«<].*?[»>]", normalized_text)
+            matches = re.findall(r"[«<]([^»>]*)[»>]", normalized_text)
             placeholders_found.update(matches)
             logging.debug(f"Paragraph {para_idx} full text: {full_text!r}, normalized: {normalized_text!r}, matches: {matches}")
+        
         logging.info(f"Placeholders found in document: {placeholders_found}")
 
         # Replace placeholders in paragraphs and tables
@@ -195,23 +206,43 @@ def _replace_placeholders_in_paragraph(paragraph, row_data, para_idx):
     full_text = ''.join(run.text for run in paragraph.runs)
     # Enhanced normalization for Unicode whitespace and non-printable characters
     normalized_text = re.sub(r'[\s\u00a0\u200b\u00ad\u200c\u200d]+', ' ', full_text).strip()
+    original_text = normalized_text
     replacements = 0
     logging.debug(f"Processing paragraph {para_idx} text: {full_text!r}, normalized: {normalized_text!r}")
 
-    for placeholder, value in row_data.items():
-        if isinstance(value, datetime.datetime) and pd.notna(value):
-            value = value.strftime('%d/%m/%Y')
-        elif pd.isna(value):
-            value = ""
-        # Strip any whitespace from the replacement value
-        replacement = str(value).strip()
-        formatted_placeholder = re.escape(placeholder)
-        pattern = re.compile(r"[«<]\s*" + formatted_placeholder + r"\s*[»>]", re.IGNORECASE)
-        logging.debug(f"Checking pattern '{pattern.pattern}' against normalized text: {normalized_text!r}")
-        if pattern.search(normalized_text):
-            normalized_text = pattern.sub(replacement, normalized_text)
-            replacements += 1
-            logging.debug(f"Replaced '{pattern.pattern}' with '{replacement}' in paragraph {para_idx}")
+    # First approach: Direct placeholder replacement (exact column names)
+    for column_name, value in row_data.items():
+        # Create pattern for various placeholder formats with the column name
+        patterns = [
+            f"[«<]\\s*{re.escape(column_name)}\\s*[»>]",           # Basic: «Column_Name»
+            f"[«<]\\s*{re.escape(column_name.lower())}\\s*[»>]",   # Lowercase: «column_name»
+            f"[«<]\\s*{re.escape(column_name.upper())}\\s*[»>]"    # Uppercase: «COLUMN_NAME»
+        ]
+        
+        for pattern in patterns:
+            regex = re.compile(pattern, re.IGNORECASE)
+            if regex.search(normalized_text):
+                normalized_text = regex.sub(value, normalized_text)
+                replacements += 1
+                logging.debug(f"Replaced '{pattern}' with '{value}' in paragraph {para_idx}")
+    
+    # Second approach: Extract placeholders and try to match them to column names
+    if replacements == 0:
+        placeholders = re.findall(r"[«<]([^»>]*)[»>]", original_text)
+        for placeholder in placeholders:
+            clean_placeholder = placeholder.strip()
+            # Try different variations of the placeholder to match column names
+            for column_name, value in row_data.items():
+                if (clean_placeholder.lower() == column_name.lower() or
+                    clean_placeholder.lower().replace("_", "") == column_name.lower().replace("_", "") or
+                    clean_placeholder.lower().replace(" ", "") == column_name.lower().replace(" ", "")):
+                    
+                    pattern = f"[«<]\\s*{re.escape(clean_placeholder)}\\s*[»>]"
+                    regex = re.compile(pattern, re.IGNORECASE)
+                    if regex.search(normalized_text):
+                        normalized_text = regex.sub(value, normalized_text)
+                        replacements += 1
+                        logging.debug(f"Fuzzy match: Replaced '{pattern}' with '{value}' in paragraph {para_idx}")
 
     if replacements > 0:
         for run in paragraph.runs:
@@ -226,11 +257,16 @@ def _replace_placeholders_in_table(table, row_data, table_idx):
     for row_idx, row in enumerate(table.rows):
         for col_idx, cell in enumerate(row.cells):
             for paragraph in cell.paragraphs:
-                cell_text = ''.join(run.text for run in paragraph.runs)
-                logging.debug(f"Table {table_idx} cell [row {row_idx}, col {col_idx}] text: {cell_text!r}")
-                replacements += _replace_placeholders_in_paragraph(paragraph, row_data, f"table_{table_idx}_cell_{row_idx}_{col_idx}")
-            for nested_table in cell.tables:
-                replacements += _replace_placeholders_in_table(nested_table, row_data, table_idx)
+                cell_replacements = _replace_placeholders_in_paragraph(paragraph, row_data, f"table_{table_idx}_cell_{row_idx}_{col_idx}")
+                replacements += cell_replacements
+            # Handle nested tables if any
+            for i, nested_table in enumerate(cell._element.xpath('.//w:tbl')):
+                if i > 0:  # Skip the first one as it's the table itself
+                    try:
+                        nested_table_obj = table.__class__(nested_table, table._parent)
+                        replacements += _replace_placeholders_in_table(nested_table_obj, row_data, f"{table_idx}_nested_{i}")
+                    except Exception as e:
+                        logging.error(f"Error processing nested table: {str(e)}")
     return replacements
 
 if __name__ == '__main__':
