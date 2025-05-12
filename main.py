@@ -120,7 +120,7 @@ def process_files():
 
         for para_idx, paragraph in enumerate(doc.paragraphs):
             full_text = ''.join(run.text for run in paragraph.runs).strip()
-            run_texts = [run.text!r for run in paragraph.runs]
+            run_texts = [repr(run.text) for run in paragraph.runs]
             logging.debug(f"Paragraph {para_idx} runs: {run_texts}")
             matches = re.findall(r"[«<]\s*[^»>]+?\s*[»>]|\{[^}]+?\}|\b\w+\b", full_text)
             placeholders_found.update(matches)
